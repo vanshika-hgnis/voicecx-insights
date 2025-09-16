@@ -17,6 +17,9 @@ USE_OLLAMA = True  # set False to use Mistral API
 MODEL = "mistral"  # or any local Ollama model (e.g. "llama2")
 MODEL_OLLAMA = "llama3.2:1b"
 
+WHISPER_EXE = r"D:\Project\VoiceCX\voicecx-insights\basemvp\whisper.cpp\build\bin\Release\whisper-cli.exe"
+MODEL_FILE = r"D:\Project\VoiceCX\voicecx-insights\basemvp\whisper.cpp\ggml-tiny.en.bin"
+
 
 # ========= STEP 1: Record Call =========
 def record_audio(filename, duration=10, samplerate=16000, device=None):
@@ -38,36 +41,39 @@ def record_audio(filename, duration=10, samplerate=16000, device=None):
     return filename
 
 
+import os
+
+
 def transcribe_whisper(audio_file):
     print("[INFO] Running Whisper transcription...")
+
+    exe_path = os.path.abspath("whisper-cli.exe")
+    model_path = os.path.abspath("whisper.cpp/ggml-tiny.en.bin")
+    audio_path = os.path.abspath(audio_file)
     result = subprocess.run(
-        [
-            "whisper-cli.exe",
-            "-m",
-            "whisper.cpp/ggml-tiny.en.bin",  # use tiny.en for now
-            "-f",
-            audio_file,
-            "--no-timestamps",  # no timestamps
-            "--print-progress",
-            "false",  # disable progress bar/logs
-        ],
-        capture_output=True,
+        [WHISPER_EXE, "-m", MODEL_FILE, "-f", audio_file, "--no-timestamps"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
 
-    if result.stderr:
-        print("[ERROR from Whisper]", result.stderr)
+    raw_output = (result.stdout + "\n" + result.stderr).strip()
+    print("[DEBUG] Raw Whisper Output:\n", raw_output[:500])
 
-    # Filter lines: keep only transcript text (skip logs)
+    # If no output, bail early
+    if not raw_output:
+        raise RuntimeError("Whisper produced no output. Check paths and permissions.")
+
+    # Extract transcript
     lines = []
-    for line in result.stdout.splitlines():
+    for line in raw_output.splitlines():
         if line.strip() and not line.startswith(
-            ("whisper_", "system_info", "main:", "[")
+            ("whisper_", "system_info", "main:", "whisper_print_timings")
         ):
             lines.append(line.strip())
 
     transcript = " ".join(lines)
-    print("[INFO] Transcript generated.")
+    print("[INFO] Transcript generated:", transcript[:200], "...")
     return transcript
 
 
