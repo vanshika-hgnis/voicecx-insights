@@ -1,0 +1,99 @@
+you want a fully automated voice agent:
+
+System reads your customer list (CSV/DB).
+
+Dials each customer automatically.
+
+Voice agent speaks → “Hello {name}, we’re calling about your product experience. Can you tell me how it went?”
+
+Customer replies.
+
+Agent responds with follow-ups (basic scripted or dynamic with LLM).
+
+Whole conversation is recorded, transcribed, and sent to analysis pipeline (sentiment + pain points + outcome).
+
+🏗️ How to Build an Automated Voice Agent (Open-Source Path)
+1. Telephony Layer (Calling Infrastructure)
+
+Since you don’t want Twilio (costly), go open-source:
+
+Asterisk (battle-tested PBX, self-hosted).
+
+FreeSWITCH (enterprise-grade, easier for scaling).
+
+SIP.js + WebRTC (for browser/desktop demo, no phone carrier needed).
+
+👉 For MVP, you can simulate calls locally:
+
+Agent speech → TTS (gTTS, Coqui, Piper).
+
+Customer speech → Mic input or pre-recorded audio.
+
+Later, plug in real telephony (Asterisk/FreeSWITCH).
+
+2. Voice Agent (Dialogue Manager)
+
+Agent logic can be:
+
+Scripted flow (decision tree):
+
+Greeting → Ask Q1 → Wait → Ask Q2 → End.
+
+Dynamic with LLM (Ollama/Mistral):
+
+Transcript chunk → LLM generates next response → TTS → play back.
+
+3. Speech Stack
+
+STT (Speech-to-Text):
+
+Whisper.cpp
+ (CPU, works offline).
+
+Vosk
+ (lightweight).
+
+TTS (Text-to-Speech):
+
+Piper
+ (fast, CPU-friendly).
+
+Coqui TTS
+.
+
+gTTS
+ (simple, but online).
+
+4. Pipeline Example (MVP)
+graph TD
+    A[Customer List CSV] --> B[Agent Loop]
+    B --> C[Play Agent Voice (TTS)]
+    C --> D[Capture Customer Voice (Mic/SIP)]
+    D --> E[STT: Transcribe]
+    E --> F[Agent Brain: Script or LLM]
+    F --> C
+    D --> G[Save Transcript + Audio]
+    G --> H[Analysis Pipeline: Sentiment + Pain Points + Outcome]
+    H --> I[Dashboard/JSON Output]
+
+5. Flow Example
+
+Agent: “Hello, I’m calling about your recent delivery. How was it?”
+
+Customer: “It was late, I’m not happy.”
+
+Agent (LLM or scripted): “Sorry to hear that. Can you tell me if you received the product eventually?”
+
+Customer responds → repeat loop.
+
+End call → send transcript to analysis pipeline (you already built this).
+
+🔑 Mentorship Suggestions
+
+✅ Start offline first: Simulated calls with TTS + mic input.
+
+✅ Build agent dialogue loop (STT → response → TTS).
+
+✅ Only later add real telephony (Asterisk/FreeSWITCH) if needed for true phone calls.
+
+✅ Keep analysis separate — you already decided to polish sentiment & pain points first, then connect voice agent output to it.

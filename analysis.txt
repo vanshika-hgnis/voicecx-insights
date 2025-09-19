@@ -1,0 +1,45 @@
+🏗️ Suggested Roadmap for Analysis Module
+1. Input
+
+Transcript text (from your existing pipeline or pre-recorded call).
+
+Optional metadata: campaign type, customer info.
+
+2. Analysis Stages
+
+Sentiment Classification
+
+Move beyond simple “positive/negative/neutral.”
+
+Define CX-specific sentiment classes:
+
+Happy, Neutral, Angry, Doubtful, Confused, Excited, Sad, etc.
+
+Tools:
+
+HuggingFace models (e.g., cardiffnlp/twitter-roberta-base-sentiment, j-hartmann/emotion-english-distilroberta-base).
+
+Or prompt LLM (Mistral/Ollama) to classify into your custom taxonomy.
+
+Pain Point Extraction
+
+Extract specific issues the customer faced.
+
+Techniques:
+
+LLM summarization with structured prompt: “List customer’s problems as bullet points.”
+
+Alternatively, fine-tune a small model for “complaint extraction.”
+
+Outcome Detection
+
+Was the customer’s need fulfilled?
+
+Classify: Fulfilled / Unfulfilled / Unclear.
+
+Extract reason if unfulfilled.
+
+Insight Summarization
+
+Generate a 1–2 line summary for humans:
+“Customer is upset about late delivery; request unresolved.”
