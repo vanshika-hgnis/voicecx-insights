@@ -5,6 +5,7 @@ VoiceCX Insights is an **AI-powered Voice of Customer (VoC) platform** designed 
 ---
 
 ## 🚀 Features
+
 - 📞 **Voice Call Integration** (Twilio / WebRTC) – Record & transcribe customer calls.
 - 🧠 **Sentiment Analysis** – Extract emotions and tone from voice transcripts.
 - 📊 **Interactive Dashboard** – Visualize customer feedback trends, pain points, and satisfaction scores.
@@ -13,6 +14,7 @@ VoiceCX Insights is an **AI-powered Voice of Customer (VoC) platform** designed 
 ---
 
 ## 🛠 Tech Stack
+
 - **Frontend:** React.js + TailwindCSS
 - **Backend:** FastAPI (Python)
 - **Database:** PostgreSQL (or Supabase for cloud)
@@ -22,8 +24,16 @@ VoiceCX Insights is an **AI-powered Voice of Customer (VoC) platform** designed 
 
 ---
 
+## Datasets Used
+
+- https://www.kaggle.com/datasets/bitext/training-dataset-for-chatbotsvirtual-assistants/data
+
+- https://www.kaggle.com/datasets/rafaqatkhan608/customer-call-center-dataset-analysis
+
 ## 📦 Setup
+
 1. **Clone repo**
    ```bash
    git clone https://github.com/your-username/voicecx-insights.git
    cd voicecx-insights
+   ```
