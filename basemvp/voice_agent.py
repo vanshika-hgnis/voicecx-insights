@@ -6,18 +6,38 @@ import requests
 import json
 import pyttsx3
 
+# --- Optional: cloud Ollama ---
+try:
+    from ollama import Client
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    Client = None
+
+
 # ====== CONFIG ======
-OLLAMA_API = "http://localhost:11434/api/generate"  # local LLM API
-MODEL = "llama3.2:1b"
 AUDIO_FILE = "customer_input.wav"
-SAMPLE_RATE = 44100
-
-
-USE_OLLAMA = True  # set False to use Mistral API
-MODEL_OLLAMA = "llama3.2:1b"
+SAMPLE_RATE = 16000  # safer for whisper.cpp
 
 WHISPER_EXE = r"D:\Project\VoiceCX\voicecx-insights\basemvp\whisper.cpp\build\bin\Release\whisper-cli.exe"
-MODEL_FILE = r"D:\Project\VoiceCX\voicecx-insights\basemvp\whisper.cpp\ggml-tiny.en.bin"
+# MODEL_FILE = r"D:\Project\VoiceCX\voicecx-insights\basemvp\whisper.cpp\ggml-tiny.en.bin"
+MODEL_FILE = r"D:\Project\VoiceCX\voicecx-insights\basemvp\whisper.cpp\ggml-base.en.bin"
+
+
+# --- Choose mode ---
+USE_LOCAL_OLLAMA = False  # Local Ollama server at http://localhost:11434
+USE_CLOUD_OLLAMA = True  # Ollama Cloud API
+
+# Local Ollama
+OLLAMA_API = "http://localhost:11434/api/generate"
+MODEL_OLLAMA = "llama3.2:1b"
+
+# Cloud Ollama
+OLLAMA_KEY = os.getenv("OLLAMA_KEY")
+client = None
+if USE_CLOUD_OLLAMA and Client is not None and OLLAMA_KEY:
+    client = Client(host="https://ollama.com", headers={"Authorization": OLLAMA_KEY})
 
 
 # ====== TEXT TO SPEECH ======
@@ -36,7 +56,7 @@ def record_audio(filename, duration=5):
     sd.wait()
     with wave.open(filename, "wb") as wf:
         wf.setnchannels(1)
-        wf.setsampwidth(2)
+        wf.setsampwidth(2)  # 16-bit PCM
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(audio.tobytes())
     return filename
@@ -46,11 +66,9 @@ def record_audio(filename, duration=5):
 def transcribe_whisper(audio_file):
     print("[INFO] Running Whisper transcription...")
 
-    exe_path = os.path.abspath("whisper-cli.exe")
-    model_path = os.path.abspath("whisper.cpp/ggml-tiny.en.bin")
     audio_path = os.path.abspath(audio_file)
     result = subprocess.run(
-        [WHISPER_EXE, "-m", MODEL_FILE, "-f", audio_file, "--no-timestamps"],
+        [WHISPER_EXE, "-m", MODEL_FILE, "-f", audio_path, "--no-timestamps"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -59,11 +77,10 @@ def transcribe_whisper(audio_file):
     raw_output = (result.stdout + "\n" + result.stderr).strip()
     print("[DEBUG] Raw Whisper Output:\n", raw_output[:500])
 
-    # If no output, bail early
     if not raw_output:
-        raise RuntimeError("Whisper produced no output. Check paths and permissions.")
+        raise RuntimeError("Whisper produced no output. Check audio format.")
 
-    # Extract transcript
+    # Extract transcript lines
     lines = []
     for line in raw_output.splitlines():
         if line.strip() and not line.startswith(
@@ -76,6 +93,7 @@ def transcribe_whisper(audio_file):
     return transcript
 
 
+# ====== LLM AGENT RESPONSE ======
 def get_agent_reply(transcript, context=""):
     prompt = f"""
     You are a polite customer service agent.
@@ -85,8 +103,8 @@ def get_agent_reply(transcript, context=""):
     """
 
     try:
-        if USE_OLLAMA:
-            # stream=True gives us JSONL chunks
+        # --- Local Ollama ---
+        if USE_LOCAL_OLLAMA:
             with requests.post(
                 OLLAMA_API,
                 json={"model": MODEL_OLLAMA, "prompt": prompt},
@@ -105,17 +123,16 @@ def get_agent_reply(transcript, context=""):
                         continue
                 return "".join(chunks).strip()
 
+        # --- Cloud Ollama ---
+        elif USE_CLOUD_OLLAMA and client:
+            messages = [{"role": "user", "content": prompt}]
+            response_text = []
+            for part in client.chat("gpt-oss:120b", messages=messages, stream=True):
+                response_text.append(part["message"]["content"])
+            return "".join(response_text).strip()
+
         else:
-            headers = {"Authorization": f"Bearer {os.getenv('MISTRAL_API_KEY')}"}
-            response = requests.post(
-                "https://api.mistral.ai/v1/chat/completions",
-                headers=headers,
-                json={
-                    "model": MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            return response.json()["choices"][0]["message"]["content"]
+            return "No LLM backend is configured."
 
     except Exception as e:
         print("[ERROR in LLM call]", e)
