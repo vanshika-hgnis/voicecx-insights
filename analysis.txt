@@ -1,45 +1,131 @@
-🏗️ Suggested Roadmap for Analysis Module
-1. Input
+Phase 1: Foundations (MVP)
 
-Transcript text (from your existing pipeline or pre-recorded call).
+👉 Focus on what you can do today with transcripts.
 
-Optional metadata: campaign type, customer info.
+a. Transcription
 
-2. Analysis Stages
+Use Whisper.cpp (runs on CPU, free).
 
-Sentiment Classification
+Collect: words, timestamps, pauses.
 
-Move beyond simple “positive/negative/neutral.”
+Output: JSON transcript.
 
-Define CX-specific sentiment classes:
+{
+  "text": "I want a refund",
+  "segments": [
+    {"start": 0.0, "end": 2.0, "text": "I want"},
+    {"start": 2.0, "end": 4.0, "text": "a refund"}
+  ]
+}
 
-Happy, Neutral, Angry, Doubtful, Confused, Excited, Sad, etc.
+b. Sentiment & Intent
 
-Tools:
+Use LLM (Mistral/Ollama) or HuggingFace:
 
-HuggingFace models (e.g., cardiffnlp/twitter-roberta-base-sentiment, j-hartmann/emotion-english-distilroberta-base).
+Sentiment (happy, angry, confused).
 
-Or prompt LLM (Mistral/Ollama) to classify into your custom taxonomy.
+Intent (cancel, complaint, feedback).
 
-Pain Point Extraction
+Entities (billing, delivery, product).
 
-Extract specific issues the customer faced.
+c. Pain Point Extraction
 
-Techniques:
+LLM summarization into bullet points.
 
-LLM summarization with structured prompt: “List customer’s problems as bullet points.”
+Later, embeddings + clustering.
 
-Alternatively, fine-tune a small model for “complaint extraction.”
+✅ At this stage: you can process a batch of transcripts, and output sentiment + intents + pain points per call.
 
-Outcome Detection
+Phase 2: Advanced Analytics
 
-Was the customer’s need fulfilled?
+👉 Move from per-call → aggregated insights.
 
-Classify: Fulfilled / Unfulfilled / Unclear.
+🔴 Live Churn Alert
 
-Extract reason if unfulfilled.
+Rule engine:
 
-Insight Summarization
+Keywords like “cancel,” “switch provider.”
 
-Generate a 1–2 line summary for humans:
-“Customer is upset about late delivery; request unresolved.”
+Sentiment trajectory worsening (positive → negative).
+
+Combine with customer’s historical data.
+
+Output: churn_score = 0.0–1.0
+
+If score > threshold → send alert.
+
+🧩 Pain Point Clustering
+
+Convert sentences to embeddings (e.g. sentence-transformers/all-MiniLM-L6-v2).
+
+Run HDBSCAN or k-means to find clusters.
+
+Label clusters → show top complaints.
+
+🎤 Paralinguistics (stretch goal)
+
+Use librosa or pyAudioAnalysis on raw audio:
+
+Long silence → hesitation.
+
+Overlap (interruptions).
+
+Pitch/energy shifts → anger/frustration.
+
+These audio features can be merged with transcript insights for richer signals.
+
+Phase 3: Enrichment Layer
+
+Merge analysis results with customer profile data:
+
+Past tickets → “This customer complained 3 times in 2 months.”
+
+Purchase history → “VIP user.”
+
+LTV (lifetime value).
+
+This is where your platform becomes enterprise-grade: same complaint has different weight if it’s a high-value vs low-value customer.
+
+Phase 4: Goal Alignment
+
+Let company set goals in dashboard:
+
+Churn reduction → prioritize churn alerts.
+
+Ad tracking → extract ad mentions.
+
+Support improvement → auto-tag tickets.
+
+Analysis pipeline applies weights depending on active goal.
+
+Phase 5: Outputs & Integrations
+
+Real-time alerts → Slack, Email, Dashboard.
+
+Dashboard metrics:
+
+Churn % this week.
+
+Sentiment trends.
+
+Pain point clusters.
+
+Integrations:
+
+Auto-create tickets in Zendesk/Zoho.
+
+Push notes into Salesforce CRM.
+
+Reports → PDF/CSV export.
+
+🚦 Mentorship Guidance
+
+Don’t build everything at once — Start with per-call analysis (transcript → sentiment + intent + pain points).
+
+Phase 2 (clustering + churn alert) will make your demo shine for YC-style pitch.
+
+Paralinguistics is cool but compute-heavy → do later, once text pipeline works.
+
+Always design JSON schemas early — so that dashboard integration is smooth.
+
+Think adoption: If you can export results to Google Sheets/CSV, you’ll already have “users” who can explore insights.
