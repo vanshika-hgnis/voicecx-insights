@@ -4,38 +4,36 @@
 
 VoiceCX Insights is an **AI-powered Voice of Customer (VoC) platform** designed to analyze customer sentiment from voice interactions and provide actionable insights via an interactive dashboard.
 
----
+MVP goal
 
-## 🚀 Features
+“Call numbers → ask 2–3 questions → capture keypad responses → save to DB”
 
-- 📞 **Voice Call Integration** (Twilio / WebRTC) – Record & transcribe customer calls.
-- 🧠 **Sentiment Analysis** – Extract emotions and tone from voice transcripts.
-- 📊 **Interactive Dashboard** – Visualize customer feedback trends, pain points, and satisfaction scores.
-- 📂 **Survey Data & Reports** – Export insights as PDF/CSV.
+Technology choices
 
----
+Twilio Voice
 
-## 🛠 Tech Stack
+Webhook (Node.js / Express OR Python Flask)
 
-- **Frontend:** React.js + TailwindCSS
-- **Backend:** FastAPI (Python)
-- **Database:** PostgreSQL (or Supabase for cloud)
-- **Voice API:** Twilio (or WebRTC for free MVP)
-- **NLP:** Hugging Face models for sentiment & topic detection
-- **Deployment:** Docker + Railway/Vercel
+SQLite / simple JSON / MySQL
 
----
+DTMF input (Press 1, 2, 3)
 
-## Datasets Used
-
-- https://www.kaggle.com/datasets/bitext/training-dataset-for-chatbotsvirtual-assistants/data
-
-- https://www.kaggle.com/datasets/rafaqatkhan608/customer-call-center-dataset-analysis
-
-## 📦 Setup
-
-1. **Clone repo**
-   ```bash
-   git clone https://github.com/your-username/voicecx-insights.git
-   cd voicecx-insights
-   ```
+Phone Number List
+|
+v
+Twilio Outbound Call
+|
+v
+Twilio hits your Webhook
+|
+v
+Ask Question (TwiML)
+|
+v
+User presses key
+|
+v
+Save response to DB
+|
+v
+Next Question / End Call

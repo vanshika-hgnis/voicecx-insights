@@ -1,6 +1,0 @@
-sounddevice 
-pyttsx3 
-requests
-wave
-os
-
