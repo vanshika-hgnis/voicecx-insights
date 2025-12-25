@@ -28,6 +28,18 @@ CREATE TABLE IF NOT EXISTS call_logs (
 """
 )
 
+c.execute(
+    """
+CREATE TABLE IF NOT EXISTS survey_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_text TEXT NOT NULL,
+    expected_input TEXT DEFAULT "dtmf",
+    is_active INTEGER DEFAULT 1
+);
+"""
+)
+
+
 conn.commit()
 conn.close()
 

@@ -1,8 +1,30 @@
 from flask import Flask, request, Response
-from twilio.twiml.voice_response import VoiceResponse, Gather
+from twilio.twiml.voice_response import VoiceResponse, Gather, Record
 import sqlite3
 
 app = Flask(__name__)
+
+
+@app.route("/voice/status-callback", methods=["POST"])
+def call_status():
+    call_sid = request.form.get("CallSid")
+    phone = request.form.get("To")
+    status = request.form.get("CallStatus")
+
+    # Just log status; recording/transcription handled by other callbacks
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO call_logs(call_sid, phone, status)
+        VALUES (?, ?, ?)
+        """,
+        (call_sid, phone, status),
+    )
+    conn.commit()
+    conn.close()
+
+    return "OK", 200
 
 
 def save_response(call_sid, phone, question, answer):
@@ -35,108 +57,213 @@ def log_call_status(call_sid, phone, status):
 
 @app.route("/voice/survey/start", methods=["POST"])
 def survey_start():
-    call_sid = request.form.get("CallSid")
-    phone = request.form.get("To")
+
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute("SELECT id, question_text FROM survey_questions ORDER BY id ASC LIMIT 1")
+    q = c.fetchone()
+    conn.close()
+
+    question_id, text = q
 
     vr = VoiceResponse()
 
     gather = Gather(
-        num_digits=1, action="/voice/survey/q1-response", method="POST", input="dtmf"
+        num_digits=1,
+        # action=f"/voice/survey/answer?question_id={question_id}",
+        action=f"https://3c5e11444269.ngrok-free.app/voice/survey/answer?question_id={question_id}",
+        method="POST",
+        input="dtmf",
     )
 
-    gather.say(
-        "Thank you for your time. "
-        "Are you satisfied with our service? "
-        "Press 1 for Yes. Press 2 for No."
-    )
-
+    gather.say(text)
     vr.append(gather)
 
-    vr.say("We did not receive input. Goodbye.")
-    vr.hangup()
-
     return Response(str(vr), mimetype="text/xml")
 
 
-@app.route("/voice/survey/q1-response", methods=["POST"])
-def handle_q1():
+@app.route("/voice/survey/answer", methods=["POST"])
+def save_answer():
+    print("ANSWER HOOK HIT:", dict(request.form))
     call_sid = request.form.get("CallSid")
     phone = request.form.get("To")
-    digit = request.form.get("Digits")
+    answer = request.form.get("Digits")
+    question_id = request.args.get("question_id")
 
-    save_response(call_sid, phone, "Q1_Satisfaction", digit)
+    save_response(call_sid, phone, f"Q{question_id}", answer)
+
+    # load next question
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, question_text
+        FROM survey_questions
+        WHERE id > ? AND is_active=1
+        ORDER BY id ASC LIMIT 1
+    """,
+        (question_id,),
+    )
+    q = c.fetchone()
+    conn.close()
 
     vr = VoiceResponse()
 
-    if digit == "1":
-        gather = Gather(
-            num_digits=1, action="/voice/survey/q2-yes", method="POST", input="dtmf"
-        )
-        gather.say("Thank you. " "Please rate our service from 1 to 5.")
-        vr.append(gather)
+    if not q:
+        vr.say("Thank you for your feedback. Goodbye.")
+        vr.hangup()
+        return Response(str(vr), mimetype="text/xml")
 
-    elif digit == "2":
-        gather = Gather(
-            num_digits=1, action="/voice/survey/q2-no", method="POST", input="dtmf"
-        )
-        gather.say(
-            "We are sorry for your experience. "
-            "Press 1 for quality issue. "
-            "Press 2 for service delay. "
-            "Press 3 for other reason."
-        )
-        vr.append(gather)
+    next_id, text = q
 
-    else:
-        vr.say("Invalid input. Goodbye.")
+    gather = Gather(
+        num_digits=1,
+        # action=f"/voice/survey/answer?question_id={next_id}",
+        action=f"https://3c5e11444269.ngrok-free.app/voice/survey/answer?question_id={next_id}",
+        method="POST",
+        input="dtmf",
+    )
+
+    gather.say(text)
+    vr.append(gather)
 
     return Response(str(vr), mimetype="text/xml")
-
-
-@app.route("/voice/survey/q2-yes", methods=["POST"])
-def handle_q2_yes():
-    call_sid = request.form.get("CallSid")
-    phone = request.form.get("To")
-    digit = request.form.get("Digits")
-
-    save_response(call_sid, phone, "Q2_Rating_YesFlow", digit)
-
-    vr = VoiceResponse()
-    vr.say("Thank you for your valuable feedback.")
-    vr.hangup()
-
-    return Response(str(vr), mimetype="text/xml")
-
-
-@app.route("/voice/survey/q2-no", methods=["POST"])
-def handle_q2_no():
-    call_sid = request.form.get("CallSid")
-    phone = request.form.get("To")
-    digit = request.form.get("Digits")
-
-    save_response(call_sid, phone, "Q2_Complaint_NoFlow", digit)
-
-    vr = VoiceResponse()
-    vr.say("Thank you. Our support team will review your response.")
-    vr.hangup()
-
-    return Response(str(vr), mimetype="text/xml")
-
-
-@app.route("/voice/status-callback", methods=["POST"])
-def call_status():
-    call_sid = request.form.get("CallSid")
-    phone = request.form.get("To")
-    status = request.form.get("CallStatus")
-
-    log_call_status(call_sid, phone, status)
-
-    return "OK", 200
 
 
 @app.route("/")
 def health():
     return "Survey Voice Webhook Running"
+
+
+@app.route("/voice/record-only", methods=["GET", "POST"])
+def record_only():
+    """
+    Simple flow:
+    - Say a short intro
+    - Start recording after beep
+    - On finish, Twilio hits /voice/recording-done
+    """
+
+    vr = VoiceResponse()
+
+    vr.say(
+        "Thank you for taking this automated feedback call. "
+        "Your voice will be recorded after the beep. "
+        "Please share your feedback and then you may hang up."
+    )
+
+    vr.record(
+        max_length=90,
+        play_beep=True,
+        action="/voice/recording-done",  # relative URL is OK with ngrok
+        method="POST",
+        transcribe=True,
+        transcribe_callback="/voice/transcription-complete",
+    )
+
+    # If user never records, Twilio will still continue here after timeout
+    vr.say("We did not receive any message. Goodbye.")
+    vr.hangup()
+
+    return Response(str(vr), mimetype="text/xml")
+
+
+@app.route("/voice/recording-done", methods=["POST"])
+def recording_done():
+    """
+    Called after the Record verb completes.
+    We get RecordingUrl + CallSid here.
+    """
+
+    call_sid = request.form.get("CallSid")
+    phone = request.form.get("To")
+    recording_url = request.form.get("RecordingUrl")
+
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        UPDATE call_logs
+        SET recording_url = ?
+        WHERE call_sid = ?
+        """,
+        (recording_url, call_sid),
+    )
+    conn.commit()
+    conn.close()
+
+    vr = VoiceResponse()
+    vr.say("Thank you. Your feedback has been recorded. Goodbye.")
+    vr.hangup()
+
+    return Response(str(vr), mimetype="text/xml")
+
+
+@app.route("/voice/transcription-complete", methods=["POST"])
+def transcription_complete():
+    """
+    If Twilio transcription is enabled, this will receive TranscriptionText.
+    """
+
+    call_sid = request.form.get("CallSid")
+    transcription_text = request.form.get("TranscriptionText")
+
+    if not call_sid:
+        return "OK", 200  # nothing to do
+
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        UPDATE call_logs
+        SET transcription = ?
+        WHERE call_sid = ?
+        """,
+        (transcription_text, call_sid),
+    )
+    conn.commit()
+    conn.close()
+
+    return "OK", 200
+
+
+### UI
+
+
+@app.route("/admin/questions")
+def admin_questions():
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute("SELECT id, question_text FROM survey_questions WHERE is_active=1")
+    rows = c.fetchall()
+    conn.close()
+
+    html = "<h3>Survey Questions</h3>"
+
+    for r in rows:
+        html += f"<p>{r[0]} — {r[1]}</p>"
+
+    html += """
+    <form method='POST' action='/admin/questions/add'>
+        <input name='text' placeholder='Enter question text' />
+        <button type='submit'>Add</button>
+    </form>
+    """
+
+    return html
+
+
+@app.route("/admin/questions/add", methods=["POST"])
+def add_question():
+    q = request.form.get("text")
+
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO survey_questions(question_text) VALUES (?)", (q,))
+    conn.commit()
+    conn.close()
+
+    return "Question added. <a href='/admin/questions'>Back</a>"
 
 
 if __name__ == "__main__":
