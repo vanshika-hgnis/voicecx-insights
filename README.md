@@ -16,24 +16,15 @@ Webhook (Node.js / Express OR Python Flask)
 
 SQLite / simple JSON / MySQL
 
-DTMF input (Press 1, 2, 3)
-
-Phone Number List
+numbers.py
+|
+call_trigger.py ---> Twilio Calls API
 |
 v
-Twilio Outbound Call
+/voice (Flask)
 |
-v
-Twilio hits your Webhook
+/q1 -> /q2
 |
-v
-Ask Question (TwiML)
-|
-v
-User presses key
-|
-v
-Save response to DB
-|
-v
-Next Question / End Call
+SQLite (responses + call status)
+^
+/call-status (callback)

@@ -3,7 +3,8 @@
 
 *.wav
 wav
-
+twiliocode.txt
+*.db
 
 *.exe
 *.log
