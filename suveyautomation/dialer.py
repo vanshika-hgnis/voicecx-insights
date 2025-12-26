@@ -23,24 +23,13 @@ phone_numbers = [
     # "+919304836199"
 ]
 
-
 for phone in phone_numbers:
-    # call = client.calls.create(
-    #     from_=TWILIO_NUMBER,
-    #     to=phone,
-    #     url=SURVEY_URL,
-    #     status_callback=STATUS_URL,
-    #     status_callback_event=["completed", "answered", "ringing"],
-    # )
     call = client.calls.create(
         from_=TWILIO_NUMBER,
         to=phone,
         url=SURVEY_URL,
         status_callback=STATUS_URL,
         status_callback_event=["completed", "answered"],
-        record=True,
-        recording_status_callback=STATUS_URL,
-        recording_status_callback_event=["completed"],
     )
 
     print("Call triggered:", phone, call.sid)

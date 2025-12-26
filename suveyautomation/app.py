@@ -1,8 +1,77 @@
 from flask import Flask, request, Response
 from twilio.twiml.voice_response import VoiceResponse, Gather, Record
 import sqlite3
+from flask import send_file
+import os
+from io import BytesIO
+import requests
+
 
 app = Flask(__name__)
+
+
+def ask_next_question(prev_qid):
+
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT id, question_text
+        FROM survey_questions
+        WHERE id > ?
+        AND is_active = 1
+        ORDER BY id ASC LIMIT 1
+        """,
+        (prev_qid,),
+    )
+    q = c.fetchone()
+    conn.close()
+
+    vr = VoiceResponse()
+
+    if not q:
+        vr.say("Thank you. Your feedback has been recorded. Goodbye.")
+        vr.hangup()
+        return Response(str(vr), mimetype="text/xml")
+
+    next_id, text = q
+
+    vr.say(text)
+
+    vr.record(
+        play_beep=True,
+        max_length=60,
+        action=f"/voice/survey/voice-answer?question_id={next_id}",
+        method="POST",
+        transcribe=True,
+        transcribe_callback="/voice/survey/transcription",
+    )
+
+    return Response(str(vr), mimetype="text/xml")
+
+
+@app.route("/voice/survey/transcription", methods=["POST"])
+def transcription_handler():
+
+    call_sid = request.form.get("CallSid")
+    transcription_text = request.form.get("TranscriptionText")
+    recording_url = request.form.get("RecordingUrl")
+
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        UPDATE survey_responses
+        SET transcription = ?
+        WHERE call_sid = ?
+        AND recording_url = ?
+        """,
+        (transcription_text, call_sid, recording_url),
+    )
+    conn.commit()
+    conn.close()
+
+    return "OK", 200
 
 
 @app.route("/voice/status-callback", methods=["POST"])
@@ -60,7 +129,14 @@ def survey_start():
 
     conn = sqlite3.connect("survey.db")
     c = conn.cursor()
-    c.execute("SELECT id, question_text FROM survey_questions ORDER BY id ASC LIMIT 1")
+    c.execute(
+        """
+        SELECT id, question_text
+        FROM survey_questions
+        WHERE is_active = 1
+        ORDER BY id ASC LIMIT 1
+    """
+    )
     q = c.fetchone()
     conn.close()
 
@@ -68,47 +144,95 @@ def survey_start():
 
     vr = VoiceResponse()
 
-    gather = Gather(
-        num_digits=1,
-        # action=f"/voice/survey/answer?question_id={question_id}",
-        action=f"https://3c5e11444269.ngrok-free.app/voice/survey/answer?question_id={question_id}",
-        method="POST",
-        input="dtmf",
-    )
+    vr.say(text)
 
-    gather.say(text)
-    vr.append(gather)
+    vr.record(
+        play_beep=True,
+        max_length=60,
+        action=f"/voice/survey/voice-answer?question_id={question_id}",
+        method="POST",
+        transcribe=True,
+        transcribe_callback="/voice/survey/transcription",
+    )
 
     return Response(str(vr), mimetype="text/xml")
 
 
-@app.route("/voice/survey/answer", methods=["POST"])
-def save_answer():
-    print("ANSWER HOOK HIT:", dict(request.form))
+@app.route("/voice/survey/voice-answer", methods=["POST"])
+def voice_answer():
+
     call_sid = request.form.get("CallSid")
     phone = request.form.get("To")
-    answer = request.form.get("Digits")
+    recording_url = request.form.get("RecordingUrl")
     question_id = request.args.get("question_id")
 
-    save_response(call_sid, phone, f"Q{question_id}", answer)
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO survey_responses(call_sid, phone, question, recording_url)
+        VALUES (?, ?, ?, ?)
+        """,
+        (call_sid, phone, f"Q{question_id}", recording_url),
+    )
+    conn.commit()
+    conn.close()
 
-    # load next question
+    return ask_next_question(question_id)
+
+
+@app.route("/voice/survey/answer", methods=["GET", "POST"])
+def save_answer():
+    form = request.values
+    print("ANSWER HOOK HIT:", dict(request.form))
+
+    call_sid = form.get("CallSid")
+    phone = form.get("To")
+    answer = form.get("Digits")
+    question_id = request.args.get("question_id")
+
+    if answer is None or answer == "":
+        print("No digits received — ignoring")
+        return "OK", 200
+
+    # Convert to integer to avoid lexicographical ordering
+    qid = int(question_id)
+
+    # --- Save response immediately ---
+    conn = sqlite3.connect("survey.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO survey_responses(call_sid, phone, question, answer)
+        VALUES (?, ?, ?, ?)
+        """,
+        (call_sid, phone, f"Q{qid}", answer),
+    )
+    conn.commit()
+    conn.close()
+
+    print(f"SAVED → Q{qid} = {answer}")
+
+    # --- Load next question ---
     conn = sqlite3.connect("survey.db")
     c = conn.cursor()
     c.execute(
         """
         SELECT id, question_text
         FROM survey_questions
-        WHERE id > ? AND is_active=1
-        ORDER BY id ASC LIMIT 1
-    """,
-        (question_id,),
+        WHERE id > ?
+        AND is_active = 1
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        (qid,),
     )
     q = c.fetchone()
     conn.close()
 
     vr = VoiceResponse()
 
+    # --- End of survey ---
     if not q:
         vr.say("Thank you for your feedback. Goodbye.")
         vr.hangup()
@@ -116,12 +240,13 @@ def save_answer():
 
     next_id, text = q
 
+    base = request.host_url.rstrip("/")
+
     gather = Gather(
         num_digits=1,
-        # action=f"/voice/survey/answer?question_id={next_id}",
-        action=f"https://3c5e11444269.ngrok-free.app/voice/survey/answer?question_id={next_id}",
-        method="POST",
         input="dtmf",
+        method="POST",
+        action=f"{base}/voice/survey/answer?question_id={next_id}",
     )
 
     gather.say(text)
@@ -133,6 +258,24 @@ def save_answer():
 @app.route("/")
 def health():
     return "Survey Voice Webhook Running"
+
+
+@app.route("/recording/play/<path:recording_sid>")
+def play_recording(recording_sid):
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Recordings/{recording_sid}"
+
+    r = requests.get(url, auth=(account_sid, auth_token))
+
+    if r.status_code != 200:
+        return f"Error fetching recording: {r.text}", 500
+
+    return send_file(
+        BytesIO(r.content), mimetype="audio/wav", download_name=f"{recording_sid}.wav"
+    )
 
 
 @app.route("/voice/record-only", methods=["GET", "POST"])
