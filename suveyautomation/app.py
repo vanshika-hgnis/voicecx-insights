@@ -80,7 +80,6 @@ def call_status():
     phone = request.form.get("To")
     status = request.form.get("CallStatus")
 
-    # Just log status; recording/transcription handled by other callbacks
     conn = sqlite3.connect("survey.db")
     c = conn.cursor()
     c.execute(

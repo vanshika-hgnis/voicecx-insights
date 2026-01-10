@@ -28,3 +28,106 @@ v
 SQLite (responses + call status)
 ^
 /call-status (callback)
+
+# Set up
+
+Minimal end-to-end test (recommended)
+
+1. Start the server
+
+From the project root (where this file exists):
+
+env\Scripts\activate
+python app.py
+
+Expected:
+
+Running on http://127.0.0.1:5000
+
+Health check in browser:
+
+http://127.0.0.1:5000/
+
+You must see:
+
+Survey Voice Webhook Running
+
+2. Start ngrok (required for Twilio)
+
+In a new terminal:
+
+ngrok http 5000
+
+Copy the HTTPS URL, for example:
+
+https://abc123.ngrok-free.app
+
+3. Configure Twilio phone number
+
+Twilio Console → Phone Number → Voice
+
+Incoming Call
+
+POST https://abc123.ngrok-free.app/voice/survey/start
+
+Status Callback
+
+POST https://abc123.ngrok-free.app/voice/status-callback
+
+Save.
+
+4. Ensure at least one survey question exists
+
+Open in browser:
+
+http://127.0.0.1:5000/admin/questions
+
+Add a question like:
+
+How was your experience today?
+
+If no questions exist, the call will end immediately.
+
+5. Call the Twilio number
+
+What should happen:
+
+Call connects
+
+Question is spoken
+
+Beep
+
+You speak
+
+Next question (if exists)
+
+Final goodbye
+
+6. Verify data was saved
+
+Run this in a Python shell:
+
+import sqlite3
+conn = sqlite3.connect("survey.db")
+c = conn.cursor()
+c.execute("SELECT call_sid, question, recording_url, transcription FROM survey_responses")
+for r in c.fetchall():
+print(r)
+conn.close()
+
+You should see rows.
+
+Isolated testing (no Twilio call)
+A. Test webhook manually (server only)
+curl -X POST http://127.0.0.1:5000/voice/survey/start
+
+You should receive XML (TwiML) in response.
+
+B. Test transcription handler manually
+curl -X POST http://127.0.0.1:5000/voice/survey/transcription ^
+-d "CallSid=TEST123" ^
+-d "RecordingUrl=https://test.url" ^
+-d "TranscriptionText=Hello this is a test"
+
+Then check DB.
