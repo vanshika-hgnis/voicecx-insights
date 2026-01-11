@@ -1,133 +1,303 @@
-# VoiceCX Insights
+Below is a clean, production-grade **README.md** tailored to your current codebase, covering **setup**, **end-to-end workflow**, **testing**, and **future roadmap**, without meta commentary.
 
-“We catch customer pain in real-time before they churn.”
+---
 
-VoiceCX Insights is an **AI-powered Voice of Customer (VoC) platform** designed to analyze customer sentiment from voice interactions and provide actionable insights via an interactive dashboard.
+# Voice Survey Automation (Flask + Twilio)
 
-MVP goal
+Automated outbound voice survey system using **Flask**, **Twilio Voice**, and **SQLite**.
+Supports question-by-question voice recording, call logging, transcription storage, and a lightweight admin UI.
 
-“Call numbers → ask 2–3 questions → capture keypad responses → save to DB”
+---
 
-Technology choices
+## Stack Overview
 
-Twilio Voice
+- **Backend**: Python, Flask
+- **Telephony**: Twilio Voice API
+- **Database**: SQLite
+- **Tunneling (local dev)**: ngrok
+- **ORM**: Raw SQLite (no ORM)
+- **Transcription**: Twilio (current), pluggable for offline/background engines
 
-Webhook (Node.js / Express OR Python Flask)
+---
 
-SQLite / simple JSON / MySQL
+## Repository Structure
 
-numbers.py
-|
-call_trigger.py ---> Twilio Calls API
-|
-v
-/voice (Flask)
-|
-/q1 -> /q2
-|
-SQLite (responses + call status)
-^
-/call-status (callback)
+```
+surveyautomation/
+├── app.py              # Flask app, Twilio webhooks, admin UI
+├── dialer.py           # Outbound call trigger script
+├── init_db.py          # Database schema initialization
+├── survey.db           # SQLite database (generated)
+├── requirements.txt    # Python dependencies
+├── .env                # Environment variables (not committed)
+├── .gitignore
+└── env/                # Python virtual environment
+```
 
-# Set up
+---
 
-Minimal end-to-end test (recommended)
+## Environment Variables
 
-1. Start the server
+Create a `.env` file in the root directory:
 
-From the project root (where this file exists):
+```
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxx
+```
 
+---
+
+## Installation & Setup
+
+### 1. Clone and Create Virtual Environment
+
+```bash
+git clone <repo-url>
+cd surveyautomation
+python -m venv env
 env\Scripts\activate
+```
+
+### 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Initialize Database
+
+```bash
+python init_db.py
+```
+
+Creates:
+
+- `survey_questions`
+- `survey_responses`
+- `call_logs`
+
+---
+
+## Running the Application
+
+### 1. Start Flask Server
+
+```bash
 python app.py
+```
 
-Expected:
+Runs on:
 
-Running on http://127.0.0.1:5000
+```
+http://localhost:5000
+```
 
-Health check in browser:
+### 2. Expose via ngrok
 
-http://127.0.0.1:5000/
-
-You must see:
-
-Survey Voice Webhook Running
-
-2. Start ngrok (required for Twilio)
-
-In a new terminal:
-
+```bash
 ngrok http 5000
+```
 
-Copy the HTTPS URL, for example:
+Copy the generated HTTPS URL.
 
-https://abc123.ngrok-free.app
+---
 
-3. Configure Twilio phone number
+## Configure Dialer
 
-Twilio Console → Phone Number → Voice
+Update **dialer.py**:
 
-Incoming Call
+```python
+SURVEY_URL = "https://<ngrok-id>.ngrok-free.app/voice/survey/start"
+STATUS_URL = "https://<ngrok-id>.ngrok-free.app/voice/status-callback"
+```
 
-POST https://abc123.ngrok-free.app/voice/survey/start
+Set:
 
-Status Callback
+```python
+TWILIO_NUMBER = "+1XXXXXXXXXX"
+phone_numbers = ["+91XXXXXXXXXX"]
+```
 
-POST https://abc123.ngrok-free.app/voice/status-callback
+---
 
-Save.
+## Trigger Survey Calls
 
-4. Ensure at least one survey question exists
+```bash
+python dialer.py
+```
 
-Open in browser:
+Each number receives:
 
-http://127.0.0.1:5000/admin/questions
+1. Call initiation
+2. First survey question
+3. Voice recording per question
+4. Automatic progression
+5. Call termination after last question
 
-Add a question like:
+---
 
-How was your experience today?
+## Survey Flow (Runtime)
 
-If no questions exist, the call will end immediately.
+1. **dialer.py**
 
-5. Call the Twilio number
+   - Triggers outbound calls
 
-What should happen:
+2. **/voice/survey/start**
 
-Call connects
+   - Fetches first active question
 
-Question is spoken
+3. **VoiceResponse.Record**
 
-Beep
+   - Records user response
 
-You speak
+4. **/voice/survey/voice-answer**
 
-Next question (if exists)
+   - Saves recording URL
 
-Final goodbye
+5. **ask_next_question**
 
-6. Verify data was saved
+   - Loops until no questions remain
 
-Run this in a Python shell:
+6. **/voice/survey/transcription**
 
-import sqlite3
-conn = sqlite3.connect("survey.db")
-c = conn.cursor()
-c.execute("SELECT call_sid, question, recording_url, transcription FROM survey_responses")
-for r in c.fetchall():
-print(r)
-conn.close()
+   - Stores Twilio transcription (optional)
 
-You should see rows.
+---
 
-Isolated testing (no Twilio call)
-A. Test webhook manually (server only)
-curl -X POST http://127.0.0.1:5000/voice/survey/start
+## Admin Interface
 
-You should receive XML (TwiML) in response.
+### View & Add Questions
 
-B. Test transcription handler manually
-curl -X POST http://127.0.0.1:5000/voice/survey/transcription ^
--d "CallSid=TEST123" ^
--d "RecordingUrl=https://test.url" ^
--d "TranscriptionText=Hello this is a test"
+```
+GET  /admin/questions
+POST /admin/questions/add
+```
 
-Then check DB.
+Supports:
+
+- Adding new survey questions
+- Activating/deactivating questions (via DB)
+
+---
+
+## Database Schema (Current)
+
+### survey_questions
+
+- id
+- question_text
+- expected_input
+- is_active
+
+### survey_responses
+
+- call_sid
+- phone
+- question
+- answer / recording_url
+- created_at
+
+### call_logs
+
+- call_sid
+- phone
+- status
+- recording_url
+- transcription
+
+---
+
+## Testing Checklist
+
+- Flask server reachable via ngrok
+- Twilio webhook URLs accessible
+- Call connects and plays first question
+- Voice recorded per question
+- Responses saved in `survey.db`
+- Admin UI lists questions correctly
+- Status callbacks logged
+
+---
+
+## Known Design Decisions
+
+- SQLite chosen for simplicity and portability
+- No ORM for full control over schema
+- Twilio transcription enabled but optional
+- Relative URLs used for webhook portability
+
+---
+
+## Future Enhancements Roadmap
+
+### Phase 1 – Recording Management
+
+- Admin UI for:
+
+  - Playback
+  - Download
+  - Call-wise grouping
+
+- Secure access control
+
+### Phase 2 – Offline Transcription
+
+- Background worker for:
+
+  - Whisper / Vosk
+  - Batch processing
+
+- Remove dependency on Twilio transcription
+
+### Phase 3 – Analytics & Reporting
+
+- Per-question completion rates
+- Average response length
+- Call success/failure dashboard
+- CSV / Excel export
+
+### Phase 4 – Input Modes
+
+- Mixed DTMF + Voice flows
+- Question-level input configuration
+- Retry and timeout handling
+
+### Phase 5 – Production Hardening
+
+- PostgreSQL migration
+- Auth middleware for admin routes
+- Dockerization
+- Retry-safe webhook handling
+- Queue-based async processing
+
+---
+
+## Health Check
+
+```
+GET /
+```
+
+Response:
+
+```
+Survey Voice Webhook Running
+```
+
+---
+
+## License
+
+Internal / Prototype
+Production licensing to be defined.
+
+---
+
+If you want next:
+
+- **Recording Viewer UI**
+- **Offline Transcription Worker**
+- **Schema refactor for analytics**
+- **Docker + deployment guide**
+
+Say the word and specify priority.
