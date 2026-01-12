@@ -293,11 +293,49 @@ Production licensing to be defined.
 
 ---
 
-If you want next:
+# USAGE
 
-- **Recording Viewer UI**
-- **Offline Transcription Worker**
-- **Schema refactor for analytics**
-- **Docker + deployment guide**
+Step 1: Start Backend
+python app.py
 
-Say the word and specify priority.
+Flask server starts on port 5000.
+
+Step 2: Expose with ngrok
+ngrok http 5000
+
+Twilio requires public HTTPS URLs.
+
+Step 3: Trigger Calls
+python dialer.py
+
+For each phone number:
+
+Twilio places call
+
+Hits survey start webhook
+
+Step 4: Live Call Flow
+
+User receives call
+
+Question spoken
+
+User answers by voice
+
+Recording saved
+
+Next question asked
+
+Loop until finished
+
+Call ends
+
+Step 5: Data Storage
+
+During call:
+
+survey_responses populated
+
+call_logs updated
+
+Transcriptions optionally saved
