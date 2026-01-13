@@ -2,6 +2,9 @@ from twilio.rest import Client
 from dotenv import load_dotenv
 import os
 
+# import requests
+from flask import Flask, request
+
 load_dotenv()
 
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
@@ -9,6 +12,7 @@ auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 client = Client(account_sid, auth_token)
 
 TWILIO_NUMBER = "+1 989 349 8847"
+app = Flask(__name__)
 
 
 @app.route("/admin/calls/start", methods=["POST"])
